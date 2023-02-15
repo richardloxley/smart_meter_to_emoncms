@@ -1,0 +1,446 @@
+#!/usr/bin/php
+<?php
+
+// your EmonCMS server URL
+$EMONCMS_URL = "https://www.example.com/emoncms/";
+
+// your EmonCMS server Apikey (Read & Write)
+$EMONCMS_KEY = "";
+
+// name of the input to use for electricity - leave blank to skip
+$EMONCMS_ELECTRICITY_INPUT = "import";
+
+// name of the input to use for gas - leave blank to skip
+$EMONCMS_GAS_INPUT = "gas";
+
+// MAC address of your IHD (In Home Display), which is used to authenticate with n3rgy
+$MAC_ADDRESS = "";
+
+/*
+	your gas region (used to calculate the local calorific value)
+
+	look it up here:
+	https://www.energybrokers.co.uk/gas/gas-network
+
+	if left blank we'll use the UK average of 39.5 but the kWh values will be less accurate
+
+	PUBOBJ1660	Campbeltown
+	PUBOB4507	LDZ(EA)		East Anglia
+	PUBOB4508	LDZ(EM)		East Midlands
+	PUBOB4510	LDZ(NE)		North East
+	PUBOB4509	LDZ(NO)		Northern
+	PUBOB4511	LDZ(NT)		North Thames
+	PUBOB4512	LDZ(NW)		North West
+	PUBOB4513	LDZ(SC)		Scotland
+	PUBOB4514	LDZ(SE)		South East
+	PUBOB4515	LDZ(SO)		Southern
+	PUBOB4516	LDZ(SW)		South West
+	PUBOB4517	LDZ(WM)		West Midlands
+	PUBOB4518	LDZ(WN)		Wales North
+	PUBOB4519	LDZ(WS)		Wales South
+	PUBOB4521	Oban
+	PUBOB4520	Stornoway
+	PUBOB4522	Stranraer
+	PUBOBJ1661	Thurso
+	PUBOBJ1662	Wick
+*/
+$GAS_REGION = "";
+
+// output downloaded values to terminal as well as sending to EmonCMS
+$DEBUG = true;
+
+
+
+// constant used in UK for converting gas volumes
+$VOLUME_CORRECTION_FACTOR = 1.02264;
+
+// default calorific values if the gas region hasn't been set
+$DEFAULT_CALORIFIC_VALUE = 39.5;
+
+// URLs to get consumption from n3rgy
+$ELECTRICITY_CONSUMPTION_URL = "https://consumer-api.data.n3rgy.com/electricity/consumption/1";
+$GAS_CONSUMPTION_URL = "https://consumer-api.data.n3rgy.com/gas/consumption/1";
+
+// URL to get calorific values from National Grid
+$CALORIFIC_VALUE_URL = "https://gasdata.nationalgrid.com/DataItemViewer/DownloadFile?LatestValue=true&Applicable=applicableFor&FileType=Xml";
+
+
+
+function getCalorificValue($date)
+{
+	global $CALORIFIC_VALUE_URL;
+	global $GAS_REGION;
+	global $DEFAULT_CALORIFIC_VALUE;
+
+	if (!$GAS_REGION || $GAS_REGION === "")
+	{
+		return $DEFAULT_CALORIFIC_VALUE;
+	}
+
+	$url = $CALORIFIC_VALUE_URL . "&PublicationObjectStagingIds=" .  $GAS_REGION . "&FromUtcDatetime=" . $date . "&ToUtcDateTime=" . $date;
+
+	$curl = curl_init($url);
+	curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+	$data = curl_exec($curl);
+	curl_close($curl);
+
+	if ($data === false)
+	{
+		return -1;
+	}
+	else
+	{
+		$xml = simplexml_load_string($data);
+		return $xml->DataItems[0]->Value;
+	}
+}
+
+
+
+function getConsumption($n3rgyUrl, $startDate, $endDate)
+{
+	global $MAC_ADDRESS;
+	global $VOLUME_CORRECTION_FACTOR;
+
+	$consumption = array();
+
+	$headers = array
+	(
+		"Authorization: " . $MAC_ADDRESS
+	);
+
+	// meter uses end of half hour period
+	date_add($startDate, date_interval_create_from_date_string("30 minutes"));
+	$start = date_format($startDate, "YmdHi");
+	$end = date_format($endDate, "YmdHi");
+
+	$url = $n3rgyUrl . "?start=" . $start . "&end=" . $end;
+
+	$curl = curl_init($url);
+	curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+	curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+	$data = curl_exec($curl);
+	curl_close($curl);
+
+	if ($data === false)
+	{
+		echo "Error fetching data\n";
+		exit(1);
+	}
+	else
+	{
+		$json = json_decode($data, true);
+		//var_dump($json);
+
+		if ($json === null)
+		{
+			echo "No data for the selected period\n";
+			exit(1);
+		}
+
+		if (isset($json["errors"]))
+		{
+			foreach ($json["errors"] as $error)
+			{
+				echo "Error " . $error["code"] . ": " . $error["message"] . "\n";
+			}
+
+			exit(1);
+		}
+
+		if (!isset($json["granularity"]))
+		{
+			echo "Cannot determine granularity\n";
+			exit(1);
+		}
+
+		if ($json["granularity"] !== "halfhour")
+		{
+			echo "Granularity is not halfhour [" . $json["granularity"] . "]\n";
+			exit(1);
+		}
+
+		if (!isset($json["unit"]))
+		{
+			echo "Cannot determine units\n";
+			exit(1);
+		}
+
+		$units = $json["unit"];
+
+		if ($units !== "kWh" && $units !== "m3")
+		{
+			echo "Unknown units [$units]\n";
+			exit(1);
+		}
+
+		if (isset($json["values"]))
+		{
+			$values = $json["values"];
+
+			$cv_date = "";
+			$cv = -1;
+
+			foreach ($values as $entry)
+			{
+				if (isset($entry["timestamp"]) && isset($entry["value"]))
+				{
+					$timestamp = $entry["timestamp"];
+					$value = $entry["value"];
+
+					if ($value == 16777.215)
+					{
+						// if the meter cannot read the current value, it returns 0xFFFFFF == 16777215
+						// https://github.com/n3rgy/data/issues/1
+						$value = 0;
+					}
+
+					// timestamp is end of half hour period, so convert it to the start
+					$datetime = date_create($timestamp);
+					date_sub($datetime, date_interval_create_from_date_string("30 minutes"));
+					$date = date_format($datetime, "Y-m-d");
+
+					if ($units === "kWh")
+					{
+						$kwh = $value;
+						$m3 = -1;
+					}
+					else
+					{
+						// units are m3 so convert to kWh using calorific value
+
+						if ($cv_date != $date)
+						{
+							$cv_date = $date;
+							$cv = getCalorificValue($cv_date);
+						}
+
+						if ($cv <= 0)
+						{
+							echo "Calorific value unavailable - aborting gas readings!\n";
+							return null;
+						}
+
+						$m3 = $value;
+						$kwh = $m3 * $VOLUME_CORRECTION_FACTOR * $cv / 3.6;
+					}
+
+					$consumption[] =
+					[
+						"date"	=> $datetime,
+						"m3"	=> $m3,
+						"cv"	=> $cv,
+						"kwh"	=> $kwh
+					];
+				}
+			}
+		}
+	}
+
+	return $consumption;
+}
+
+
+
+function sendConsumptionToEmoncms($emoncmsInputLabel, $consumption)
+{
+	global $EMONCMS_URL;
+	global $EMONCMS_KEY;
+
+	foreach ($consumption as $entry)
+	{
+		// slot is half an hour so kilowatts = 2 * kWh
+		// watts = kilowatts * 1000
+		$watts = 2 * $entry["kwh"] * 1000;
+
+		$date = urlencode(date_format($entry["date"], "Y-m-d H:i"));
+
+		$url = "$EMONCMS_URL/input/post.json?apikey=$EMONCMS_KEY&fulljson={\"time\":\"$date\",\"$emoncmsInputLabel\":$watts}";
+		$curl = curl_init($url);
+		curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+		$data = curl_exec($curl);
+		curl_close($curl);
+
+		if ($data === false)
+		{
+			echo "Error sending data to Emoncms\n";
+			exit(1);
+		}
+		else
+		{
+			$json = json_decode($data, true);
+			//var_dump($json);
+
+			if ($json === null)
+			{
+				echo "No JSON response from Emoncms\n";
+				exit(1);
+			}
+
+			if (!isset($json["success"]))
+			{
+				echo "Emoncms didn't report success status\n";
+				exit(1);
+			}
+
+			if ($json["success"] !== true)
+			{
+				echo "Emoncms reported failure\n";
+				exit(1);
+			}
+		}
+	}
+}
+
+
+function getDateOfLastEmoncmsReading($emoncmsInputLabel)
+{
+	global $EMONCMS_URL;
+	global $EMONCMS_KEY;
+
+	$url = "$EMONCMS_URL/input/get/?apikey=$EMONCMS_KEY";
+
+	$curl = curl_init($url);
+	curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+	$data = curl_exec($curl);
+	curl_close($curl);
+
+	if ($data === false)
+	{
+		echo "Error sending request to Emoncms\n";
+		exit(1);
+	}
+	else
+	{
+		$json = json_decode($data, true);
+		//var_dump($json);
+
+		if ($json === null)
+		{
+			echo "No JSON response from Emoncms\n";
+			exit(1);
+		}
+
+		$list = $json[0];
+
+		if (!$list)
+		{
+			echo "Emoncms didn't return input list\n";
+			exit(1);
+		}
+
+		if (!isset($list[$emoncmsInputLabel]))
+		{
+			// Emoncms doesn't have that input yet
+			return null;
+		}
+
+		$gasInput = $list[$emoncmsInputLabel];
+
+		if (!isset($gasInput["time"]))
+		{
+			// Emoncms doesn't have a time for that input
+			return null;
+		}
+
+		$timestamp = $gasInput["time"];
+
+		return date_create_from_format("U", $timestamp);
+	}
+}
+
+
+function debugConsumption($emoncmsInputLabel, $consumption)
+{
+	global $DEBUG;
+
+	if ($DEBUG)
+	{
+		if ($consumption && sizeof($consumption) > 0)
+		{
+			echo "$emoncmsInputLabel:\n";
+			echo "Date/time\t\tm3\tcalorific value\tkWh\n";
+
+			foreach ($consumption as $value)
+			{
+				echo date_format($value["date"], "Y-m-d H:i");
+				echo "\t";
+				echo $value["m3"];
+				echo "\t";
+				echo $value["cv"];
+				echo "\t";
+				echo "\t";
+				echo $value["kwh"];
+				echo "\n";
+			}
+		}
+		else
+		{
+			echo "$emoncmsInputLabel is up-to-date\n";
+		}
+	}
+}
+
+
+function downloadDataAndSendToEmooncms($n3rgyUrl, $emoncmsInputLabel)
+{
+	if (!$n3rgyUrl || $n3rgyUrl === "" || !$emoncmsInputLabel || $emoncmsInputLabel === "")
+	{
+		return;
+	}
+
+	$lastReadingTime = getDateOfLastEmoncmsReading($emoncmsInputLabel);
+
+	if ($lastReadingTime)
+	{
+		// send any new readings to EmonCMS
+
+		// start one 30 min slot beyond last reading so we don't duplicate it
+		$start = clone $lastReadingTime;
+		date_add($start, date_interval_create_from_date_string("30 minutes"));
+
+		$end = date_create("now");
+
+		$consumption = getConsumption($n3rgyUrl, $start, $end);
+		debugConsumption($emoncmsInputLabel, $consumption);
+		sendConsumptionToEmoncms($emoncmsInputLabel, $consumption);
+	}
+	else
+	{
+		// no readings in EmonCMS yet
+
+		// we need to create an input - but we don't want to send all the readings yet, as the user
+		// will have to configure the feeds they want after the input is created
+
+		// so let's create one dummy entry just before the first reading that's actually available
+
+		// we look back for the last 90 days (as n3rgy can output no more than 90 days of data)
+
+		$start = date_create("now");
+		date_sub($start, date_interval_create_from_date_string("90 days"));
+
+		$end = date_create("now");
+		$consumption = getConsumption($n3rgyUrl, $start, $end);
+
+		$earliestReadingDate = $consumption[0]["date"];
+		date_sub($earliestReadingDate, date_interval_create_from_date_string("30 minutes"));
+
+		$dummyConsumption = array();
+		$dummyConsumption[] =
+		[
+			"date"	=> $earliestReadingDate,
+			"m3"	=> -1,
+			"cv"	=> -1,
+			"kwh"	=> 0
+		];
+
+		sendConsumptionToEmoncms($emoncmsInputLabel, $dummyConsumption);
+
+		echo "Created EmonCMS input \"$emoncmsInputLabel\".\n";
+		echo "**** IMPORTANT **** create any feeds that depend on this input before running this script again.\n";
+	}
+}
+
+
+downloadDataAndSendToEmooncms($ELECTRICITY_CONSUMPTION_URL, $EMONCMS_ELECTRICITY_INPUT);
+downloadDataAndSendToEmooncms($GAS_CONSUMPTION_URL, $EMONCMS_GAS_INPUT);
