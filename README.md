@@ -46,7 +46,7 @@ If you just want to browse the data manually, you can [download CSV files here](
 
 Download *smart_meter_to_emoncms*.  It's a PHP script, so you will need PHP installed on the computer you run it on.
 
-First edit the file, to set up the configuration variables at the top:
+Download *smart_meter_to_emoncms.example.ini* and make a copy *smart_meter_to_emoncms.ini* in the same directory as *smart_meter_to_emoncms*.  Now edit the copy to set the following variables:
 
 ### EMONCMS_URL ###
 
@@ -110,7 +110,7 @@ Set this to "true" if you want the readings to be output to the screen/terminal 
 
 ### Other variables ###
 
-There are some other global variables at the top of the file:
+There are some other variables at the bottom of the file:
 
 - VOLUME_CORRECTION_FACTOR
 - DEFAULT_CALORIFIC_VALUE
