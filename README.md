@@ -23,7 +23,7 @@ It also uses a public API from National Grid to convert gas volume to kWh using 
 
 ## Sign up for n3rgy
 
-First look at your **In Home Device** (the table-top display that shows your energy usage).  On the back (or inside any battery compartment) it should have a **MAC address** (a 12 digit hexadecimal number).  You will need this to prove you are the home occupier.
+First look at your **In Home Device** (the table-top display that shows your energy usage).  On the back (or inside any battery compartment) it should have a **MAC address** or similar identifier (a long hexadecimal number).  You will need this to prove you are the home occupier.
 
 Then you need either the **MPAN number** from your electricity meter *or* your **MPRN number** from your gas meter.  You can find this:
 
@@ -36,7 +36,7 @@ The go to the [n3rgy sign-up page](https://data.n3rgy.com/consumer/sign-up).
 - Enter your MPAN or MPRN
 - Accept the terms
 - Fill in when you moved in to the property
-- Enter the MAC address of your IHD
+- Enter the MAC address / ID number of your IHD
 
 n3rgy will start indexing the data from your meter.  It might take a little while until the data is available via the API.
 
@@ -70,7 +70,7 @@ If it doesn't yet exist it will be created by the script.  If you want to import
 
 ### MAC_ADDRESS ###
 
-The MAC address of your IHD (In Home Display), which is used to authenticate with n3rgy - the same as you used when you signed up to n3rgy.
+The MAC address or ID number of your IHD (In Home Display), which is used to authenticate with n3rgy - the same as you used when you signed up to n3rgy.
 
 ### GAS_REGION ###
 
