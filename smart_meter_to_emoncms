@@ -332,7 +332,8 @@ function sendConsumptionToEmoncms($emoncmsInputLabel, $consumption)
 }
 
 
-function getDateOfLastEmoncmsReading($emoncmsInputLabel)
+// may be null if Emoncms doesn't yet have a "Log to feed" process
+function getEmoncmsFeedId($emoncmsInputLabel)
 {
 	global $CONFIG;
 
@@ -373,15 +374,84 @@ function getDateOfLastEmoncmsReading($emoncmsInputLabel)
 			return null;
 		}
 
-		$gasInput = $list[$emoncmsInputLabel];
+		$input = $list[$emoncmsInputLabel];
 
-		if (!isset($gasInput["time"]))
+		if (!isset($input["processList"]))
 		{
-			// Emoncms doesn't have a time for that input
+			// Emoncms doesn't yet have a process list
 			return null;
 		}
 
-		$timestamp = $gasInput["time"];
+		// process list is comma separated list of process IDs and feed IDs
+		// 	e.g. 1:29,4:30
+		// process IDs are listed in .../emoncms/Modules/process/process_processlist.php
+		// we're interested in process ID 1 "Log to feed" as we want to find the ID of
+		// the feed that contains the raw values of the input
+
+		$LOG_TO_FEED_PROCESS_ID = "1";
+
+		$feedID = null;
+
+		$processList = str_getcsv($input["processList"]);
+
+		foreach ($processList as $process)
+		{
+			// split out x:y into array
+			$pair = str_getcsv($process, ":");
+			if ($pair[0] == $LOG_TO_FEED_PROCESS_ID)
+			{
+				$feedID = $pair[1];
+				break;
+			}
+		}
+
+		// may be null if Emoncms doesn't yet have a "Log to feed" process
+		return $feedID;
+	}
+}
+
+
+// may be null if Emoncms doesn't yet have that input or doesn't yet have a "Log to feed" process for that input
+function getDateOfLastEmoncmsReading($emoncmsInputLabel)
+{
+	$feedID = getEmoncmsFeedId($emoncmsInputLabel);
+
+	if ($feedID === null)
+	{
+		return null;
+	}
+
+	global $CONFIG;
+	$url = $CONFIG["EMONCMS_URL"] . "/feed/timevalue.json?apikey=" . $CONFIG["EMONCMS_KEY"] . "&id=" . $feedID;
+
+	$curl = curl_init($url);
+	curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+	$data = curl_exec($curl);
+	curl_close($curl);
+
+	if ($data === false)
+	{
+		echo "Error sending request to Emoncms\n";
+		exit(1);
+	}
+	else
+	{
+		$json = json_decode($data, true);
+		//var_dump($json);
+
+		if ($json === null)
+		{
+			echo "No JSON response from Emoncms\n";
+			exit(1);
+		}
+
+		if (!isset($json["time"]))
+		{
+			// Emoncms doesn't have any values in that feed yet
+			return null;
+		}
+
+		$timestamp = $json["time"];
 
 		return timestampToUtc($timestamp);
 	}
