@@ -176,18 +176,21 @@ function getConsumption($n3rgyUrl, $startDate, $endDate)
 			exit(1);
 		}
 
-		if (!isset($json["unit"]))
+		if (isset($json["unit"]))
 		{
-			echo "Cannot determine units\n";
-			exit(1);
+			$units = $json["unit"];
+
+			if ($units !== "kWh" && $units !== "m3")
+			{
+				echo "Unknown units [$units]\n";
+				exit(1);
+			}
 		}
-
-		$units = $json["unit"];
-
-		if ($units !== "kWh" && $units !== "m3")
+		else
 		{
-			echo "Unknown units [$units]\n";
-			exit(1);
+			// for some reason the production API doesn't return units,
+			// so assume no units means it's kWh
+			$units = "kWh";
 		}
 
 		if (isset($json["values"]))
@@ -552,5 +555,6 @@ function downloadDataAndSendToEmooncms($n3rgyUrl, $emoncmsInputLabel)
 
 
 downloadDataAndSendToEmooncms($CONFIG["ELECTRICITY_CONSUMPTION_URL"], $CONFIG["EMONCMS_ELECTRICITY_INPUT"]);
+downloadDataAndSendToEmooncms($CONFIG["ELECTRICITY_PRODUCTION_URL"], $CONFIG["EMONCMS_ELECTRICITY_PRODUCTION_INPUT"]);
 downloadDataAndSendToEmooncms($CONFIG["GAS_CONSUMPTION_URL"], $CONFIG["EMONCMS_GAS_INPUT"]);
 
