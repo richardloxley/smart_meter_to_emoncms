@@ -40,6 +40,8 @@ The go to the [n3rgy sign-up page](https://data.n3rgy.com/consumer/sign-up).
 
 n3rgy will start indexing the data from your meter.  It might take a little while until the data is available via the API.
 
+NB. For energy production (export) data, you may also need to register a second time using your export meter MPAN.
+
 If you just want to browse the data manually, you can [download CSV files here](https://data.n3rgy.com/consumer/download-data)
 
 ## Set up the script
@@ -59,6 +61,12 @@ The "Read & Write API Key" for your EmonCMS account.  You can find it under "My 
 ### EMONCMS_ELECTRICITY_INPUT ###
 
 The name of the input in EmonCMS for the electricity imported (in watts), e.g. "electricity", "import", "meter_import", etc.  Leave blank if you don't want to import electricity data.
+
+If it doesn't yet exist it will be created by the script.  If you want to import historical data it's best to let it be created by the script, as the script will only import data later than the most recent reading (if any) in EmonCMS.
+
+### EMONCMS_ELECTRICITY_PRODUCTION_INPUT ###
+
+The name of the input in EmonCMS for the electricity exported (in watts), e.g. "production", "export", "meter_export", etc.  Leave blank if you don't want to import electricity production data.
 
 If it doesn't yet exist it will be created by the script.  If you want to import historical data it's best to let it be created by the script, as the script will only import data later than the most recent reading (if any) in EmonCMS.
 
@@ -115,6 +123,7 @@ There are some other variables at the bottom of the file:
 - VOLUME_CORRECTION_FACTOR
 - DEFAULT_CALORIFIC_VALUE
 - ELECTRICITY_CONSUMPTION_URL
+- ELECTRICITY_PRODUCTION_URL
 - GAS_CONSUMPTION_URL
 - CALORIFIC_VALUE_URL
 
@@ -221,15 +230,15 @@ The API is quite simple, here are some examples using curl:
 Consumption:
     curl -H "Authorization: MACADDRESS" https://consumer-api.data.n3rgy.com/electricity/consumption/1
     curl -H "Authorization: MACADDRESS" https://consumer-api.data.n3rgy.com/gas/consumption/1
-    
+
+Production (export):
+    curl -H "Authorization: MACADDRESS" https://consumer-api.data.n3rgy.com/electricity/production/1
+
 Date ranges:
     curl -H "Authorization: MACADDRESS" https://consumer-api.data.n3rgy.com/gas/consumption/1?start=202301260000\&end=202301262330
 
 Tariff:
     curl -H "Authorization: MACADDRESS" https://consumer-api.data.n3rgy.com/electricity/tariff/1
-    
-Export meters (untested):
-    curl -H "Authorization: MACADDRESS" https://consumer-api.data.n3rgy.com/electricity/production/1
 ```
 
 ### Other n3rgy client implementations
