@@ -253,18 +253,14 @@ Tariff:
 
 ### National Grid calorific values
 
-You can download calorific values using the [National Grid Data Item Explorer](https://gasdata.nationalgrid.com/DataItemExplorer).
+You can download calorific values using the [National Gas Data website](https://data.nationalgas.com/find-gas-data).
 
-There is some very limited data (including acceptable use) on the API here: https://www.nationalgas.com/sites/gas/files/documents/8589935564-API%20Guidance%20v1.0%2020.6.16.pdf
+There is documentation on the CSV HTTP GET interface here: https://data.nationalgas.com/Files/Using%20the%20custom%20download%20tool%20with%20Power%20Query.pdf
 
-I discovered more by reading the code of the Data Item Explorer website, including the gas area codes.
+I discovered more by reading the website code, including the gas area codes and the XML HTTP POST interface.
 
-Here are some examples of using the API with curl:
+Here is an example of using the CSV interface with curl:
 
 ```
-CSV
-curl "https://gasdata.nationalgrid.com/DataItemViewer/DownloadFile?LatestValue=true&Applicable=applicableFor&FromUtcDatetime=2023-02-05T00:00:00.000Z&ToUtcDateTime=2023-02-05T00:00:00.000Z&PublicationObjectStagingIds=PUBOB4516&FileType=Csv"
-
-XML
-curl "https://gasdata.nationalgrid.com/DataItemViewer/DownloadFile?LatestValue=true&Applicable=applicableFor&FromUtcDatetime=2023-02-05T00:00:00.000Z&ToUtcDateTime=2023-02-05T00:00:00.000Z&PublicationObjectStagingIds=PUBOB4516&FileType=Xml"
+curl "https://data.nationalgas.com/api/find-gas-data-download?applicableFor=Y&dateFrom=2023-07-24&dateTo=2023-07-24&dateType=GASDAY&latestFlag=Y&ids=PUBOB4516&type=CSV"
 ```

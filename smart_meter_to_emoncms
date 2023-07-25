@@ -73,11 +73,22 @@ function getCalorificValue($datetime)
 		return $CONFIG["DEFAULT_CALORIFIC_VALUE"];
 	}
 
-	// National Grid API doesn't accept dates with + timezone signifiers, only Z!
-	$zuluDate = formatZuluDateTime($datetime);
-	$url = $CONFIG["CALORIFIC_VALUE_URL"] . "&PublicationObjectStagingIds=" .  $CONFIG["GAS_REGION"] . "&FromUtcDatetime=" . $zuluDate . "&ToUtcDateTime=" . $zuluDate;
+	$date = formatDate($datetime);
 
-	$curl = curl_init($url);
+	$params = array
+	(
+		"applicableFor" => "Y",
+		"latestFlag" => "Y",
+		"dateType" => "GASDAY",
+		"type" => "XML",
+		"ids" => $CONFIG["GAS_REGION"],
+		"dateFrom" => $date,
+		"dateTo" => $date
+	);
+
+	$curl = curl_init($CONFIG["CALORIFIC_VALUE_URL"]);
+	curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($params));
+	curl_setopt($curl, CURLOPT_HTTPHEADER, array('Content-Type:application/json'));
 	curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
 	$data = curl_exec($curl);
 	curl_close($curl);
@@ -97,9 +108,9 @@ function getCalorificValue($datetime)
 			return -1;
 		}
 
-		if (isset($xml->DataItems) && isset($xml->DataItems[0]) && isset($xml->DataItems[0]->Value))
+		if (isset($xml->dataItem) && isset($xml->dataItem->Value))
 		{
-			return $xml->DataItems[0]->Value;
+			return $xml->dataItem->Value;
 		}
 		else
 		{
@@ -552,7 +563,6 @@ function downloadDataAndSendToEmooncms($n3rgyUrl, $emoncmsInputLabel)
 		echo "**** IMPORTANT **** create any feeds that depend on this input before running this script again.\n";
 	}
 }
-
 
 downloadDataAndSendToEmooncms($CONFIG["ELECTRICITY_CONSUMPTION_URL"], $CONFIG["EMONCMS_ELECTRICITY_INPUT"]);
 downloadDataAndSendToEmooncms($CONFIG["ELECTRICITY_PRODUCTION_URL"], $CONFIG["EMONCMS_ELECTRICITY_PRODUCTION_INPUT"]);
