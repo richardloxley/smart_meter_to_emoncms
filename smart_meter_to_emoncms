@@ -151,8 +151,9 @@ function getConsumption($n3rgyUrl, $startDate, $endDate)
 
 	if ($data === false)
 	{
-		echo "Error fetching data\n";
-		exit(1);
+		echo "No response from server\n";
+		echo "URL: $url\n";
+		return null;
 	}
 	else
 	{
@@ -162,29 +163,35 @@ function getConsumption($n3rgyUrl, $startDate, $endDate)
 		if ($json === null)
 		{
 			echo "No data for the selected period\n";
-			exit(1);
+			echo "URL: $url\n";
+			return null;
 		}
 
 		if (isset($json["errors"]))
 		{
+			echo "Server returned errors\n";
+			echo "URL: $url\n";
+
 			foreach ($json["errors"] as $error)
 			{
 				echo "Error " . $error["code"] . ": " . $error["message"] . "\n";
 			}
 
-			exit(1);
+			return null;
 		}
 
 		if (!isset($json["granularity"]))
 		{
 			echo "Cannot determine granularity\n";
-			exit(1);
+			echo "URL: $url\n";
+			return null;
 		}
 
 		if ($json["granularity"] !== "halfhour")
 		{
 			echo "Granularity is not halfhour [" . $json["granularity"] . "]\n";
-			exit(1);
+			echo "URL: $url\n";
+			return null;
 		}
 
 		if (isset($json["unit"]))
@@ -194,7 +201,8 @@ function getConsumption($n3rgyUrl, $startDate, $endDate)
 			if ($units !== "kWh" && $units !== "m3")
 			{
 				echo "Unknown units [$units]\n";
-				exit(1);
+				echo "URL: $url\n";
+				return null;
 			}
 		}
 		else
