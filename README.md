@@ -76,6 +76,10 @@ The name of the input in EmonCMS for the gas used (in watts), e.g. "gas", "gas_m
 
 If it doesn't yet exist it will be created by the script.  If you want to import historical data it's best to let it be created by the script, as the script will only import data later than the most recent reading (if any) in EmonCMS.
 
+### MPAN ###
+
+The MPAN (or MPRN) of any of your meters.  Optional.  Used only when displaying an error message suggesting that you re-authenticate you n3rgy account so you don't need to look it up again!
+
 ### MAC_ADDRESS ###
 
 The MAC address or ID number of your IHD (In Home Display), which is used to authenticate with n3rgy - the same as you used when you signed up to n3rgy.
@@ -116,12 +120,17 @@ e.g. if you're in the LDZ SW region, set GAS_REGION to "PUBOB4516".
 
 Set this to "true" if you want the readings to be output to the screen/terminal when the script runs (as well as sending them to EmonCMS).  Set it to "false" to silently upload the readings.  Error messages will always be output.
 
+### NO_DATA_WARN_DAYS ###
+
+Display a warning if no data has been received for this number of days.
+
 ### Other variables ###
 
 There are some other variables at the bottom of the file:
 
 - VOLUME_CORRECTION_FACTOR
 - DEFAULT_CALORIFIC_VALUE
+- REAUTHORISE_URL
 - ELECTRICITY_CONSUMPTION_URL
 - ELECTRICITY_PRODUCTION_URL
 - GAS_CONSUMPTION_URL
