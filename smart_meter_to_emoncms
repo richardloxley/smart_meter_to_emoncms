@@ -100,6 +100,9 @@ function getCalorificValue($datetime)
 	}
 	else
 	{
+		// don't output errors, just return false if XML failed to load
+		libxml_use_internal_errors(true);
+
 		$xml = simplexml_load_string($data);
 
 		if ($xml === false)
@@ -158,13 +161,19 @@ function getConsumption($n3rgyUrl, $startDate, $endDate)
 	else
 	{
 		$json = json_decode($data, true);
-		//var_dump($json);
+		// var_dump($json);
 
 		if ($json === null)
 		{
 			echo "No data for the selected period\n";
 			echo "URL: $url\n";
 			return null;
+		}
+
+		if (isset($json["message"]))
+		{
+			echo "Server returned message: " . $json["message"] . "\n";
+			echo "URL: $url\n";
 		}
 
 		if (isset($json["errors"]))
@@ -184,6 +193,8 @@ function getConsumption($n3rgyUrl, $startDate, $endDate)
 		{
 			echo "Cannot determine granularity\n";
 			echo "URL: $url\n";
+			echo "JSON response:\n";
+			var_dump($json);
 			return null;
 		}
 
@@ -515,6 +526,8 @@ function debugConsumption($emoncmsInputLabel, $consumption)
 
 function downloadDataAndSendToEmooncms($n3rgyUrl, $emoncmsInputLabel)
 {
+	global $CONFIG;
+
 	if (!$n3rgyUrl || $n3rgyUrl === "" || !$emoncmsInputLabel || $emoncmsInputLabel === "")
 	{
 		return;
@@ -533,6 +546,18 @@ function downloadDataAndSendToEmooncms($n3rgyUrl, $emoncmsInputLabel)
 		$end = nowInUtc();
 
 		$consumption = getConsumption($n3rgyUrl, $start, $end);
+
+		$noDataWarnDays = $CONFIG["NO_DATA_WARN_DAYS"];
+		$comparisonDate = date_sub(nowInUtc(), date_interval_create_from_date_string("$noDataWarnDays days"));
+
+		if (($consumption === null || count($consumption) == 0) && $lastReadingTime < $comparisonDate)
+		{
+			echo "No data for $emoncmsInputLabel for at least $noDataWarnDays days\n";
+			echo "Try re-authorising your access at " . $CONFIG["REAUTHORISE_URL"] . "\n";
+			echo "    using MPAN = " . $CONFIG["MPAN"] . "\n";
+			echo "    and MAC = " . $CONFIG["MAC_ADDRESS"] . "\n";
+		}
+
 		debugConsumption($emoncmsInputLabel, $consumption);
 		sendConsumptionToEmoncms($emoncmsInputLabel, $consumption);
 	}
